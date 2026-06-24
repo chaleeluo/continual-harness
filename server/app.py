@@ -3639,6 +3639,8 @@ async def mcp_search_memory(request: dict):
             query=request.get("query"),
             location=request.get("location"),
             min_importance=request.get("min_importance", 1),
+            rerank=request.get("rerank", True),
+            top_k=request.get("top_k"),
         )
     except Exception as e:
         logger.error(f"Error searching memory: {e}")
