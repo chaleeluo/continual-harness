@@ -475,11 +475,13 @@ def add_memory_direct(category=None, title="", content="", location=None, coordi
         return {"success": False, "error": str(e)}
 
 
-def search_memory_direct(category=None, query="", location="", min_importance=1, path=None) -> dict:
-    """Search long-term memory."""
+def search_memory_direct(category=None, query="", location="", min_importance=1, path=None, rerank=True, top_k=None) -> dict:
+    """Search long-term memory with optional multi-factor reranking."""
     try:
         results = memory_store.search(
-            path=path, category=category, location=location or None, query=query or None, min_importance=min_importance
+            path=path, category=category, location=location or None,
+            query=query or None, min_importance=min_importance,
+            rerank=rerank, top_k=top_k,
         )
         return {"success": True, "count": len(results), "results": results}
     except Exception as e:

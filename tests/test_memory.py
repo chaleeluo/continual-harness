@@ -157,6 +157,102 @@ class TestMemoryStore:
 
 
 # ---------------------------------------------------------------------------
+# Memory reranking
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryRerank:
+    def test_rerank_returns_sorted(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        store.add(path="pokemon", title="Mudkip", content="Water starter", importance=3)
+        store.add(path="pokemon", title="Torchic", content="Fire starter", importance=5)
+        store.add(path="pokemon", title="Treecko", content="Grass starter", importance=4)
+
+        # No query — pure importance sort
+        results = store.search(path="pokemon", rerank=True)
+        assert len(results) == 3
+        assert results[0].title == "Torchic"  # importance 5
+        assert results[1].title == "Treecko"   # importance 4
+        assert results[2].title == "Mudkip"    # importance 3
+
+    def test_rerank_relevance_boosts(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        store.add(path="pokemon", title="Mudkip", content="Water type starter in Hoenn. Water is super effective.", importance=3)
+        store.add(path="pokemon", title="Torchic", content="Fire type starter in Hoenn. Also found near water.", importance=3)
+
+        # Same importance — Mudkip should win on higher TF for "Water"
+        results = store.search(query="Water", rerank=True)
+        assert len(results) == 2
+        assert results[0].title == "Mudkip"  # 2x "Water" vs 1x
+
+    def test_access_count_increments_on_get(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        eid = store.add(path="test", title="Pop", content="Popular entry")
+        entry = store.get(eid)
+        assert entry.access_count == 1
+        entry2 = store.get(eid)
+        assert entry2.access_count == 2
+
+    def test_access_count_serialized(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        eid = store.add(path="test", title="Persist", content="Check count")
+        store.get(eid)
+        store.get(eid)
+
+        store2 = Memory(cache_dir=str(tmp_path))
+        # Read directly from entries to avoid increment from get()
+        entry = store2.entries[eid]
+        assert entry.access_count == 2
+
+    def test_rerank_top_k(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        for i in range(10):
+            store.add(path="test", title=f"Entry {i}", content=f"Content for entry number {i}")
+        results = store.search(top_k=3)
+        assert len(results) == 3
+
+    def test_rerank_strategy_importance(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        store.add(path="a", title="Low", content="Low importance", importance=1)
+        store.add(path="a", title="High", content="High importance", importance=5)
+        results = store.search(path="a", rerank_strategy="importance")
+        assert results[0].title == "High"
+
+    def test_rerank_strategy_hybrid_default(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        store.add(path="a", title="Match", content="The quick brown fox jumps. Foxes are clever.", importance=4)
+        store.add(path="a", title="Important", content="Something else entirely", importance=5)
+        results = store.search(query="fox", rerank_strategy="hybrid")
+        assert len(results) == 1  # Only Match has "fox"
+        assert results[0].title == "Match"
+
+    def test_compute_recency(self):
+        from datetime import datetime, timedelta
+        import math
+        entry = MemoryEntry(
+            id="mem_0001", title="Recent",
+            updated_at=datetime.now().isoformat(),
+        )
+        score = Memory._compute_recency(entry, datetime.now())
+        assert score > 0.9  # Very recent
+
+        old_entry = MemoryEntry(
+            id="mem_0002", title="Old",
+            updated_at=(datetime.now() - timedelta(days=30)).isoformat(),
+        )
+        old_score = Memory._compute_recency(old_entry, datetime.now())
+        assert old_score < 0.1  # Very old
+
+    def test_rerank_with_empty_query(self, tmp_path):
+        store = Memory(cache_dir=str(tmp_path))
+        store.add(path="a", title="One", content="First")
+        store.add(path="a", title="Two", content="Second", importance=5)
+        results = store.search(path="a", rerank=True)
+        assert len(results) == 2
+        assert results[0].title == "Two"  # Higher importance first
+
+
+# ---------------------------------------------------------------------------
 # Migration from knowledge_base.json -> memory.json
 # ---------------------------------------------------------------------------
 
